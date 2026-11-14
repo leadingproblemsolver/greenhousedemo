@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Al Khor July-day greenhouse simulator · pad cooling vs. peak wet-bulb</title>
+  <meta name="description" content="A reproducible July-day simulator that shows when evaporative pad cooling stops working at a hot-arid site, and what the AC and water penalty is when it does.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23fff'/%3E%3Cpath d='M1 12 L6 6 L15 3' stroke='red' stroke-width='2' fill='none'/%3E%3Cpath d='M1 9 L15 9' stroke='green' stroke-width='1.5' stroke-dasharray='1.5 1.5'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <span class="brand">Al Khor July-day simulator <span class="ver mono">v1.1.0</span></span>
+      <nav aria-label="Sections">
+        <a href="#physics">Physics</a>
+        <a href="#determinism">Run hash</a>
+        <a href="#csv">CSV</a>
+        <a href="#figure">Figure</a>
+        <a href="#summary">Summary</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hook -->
+    <section class="hero wrap">
+      <p class="eyebrow">Greenhouse heat-and-mass balance · Al Khor, Qatar · July 2025</p>
+      <h1>At peak wet-bulb, the pad outlet reaches <span class="num" data-sg="t_pad_out">32.4</span>&nbsp;°C. The target is 25&nbsp;°C.</h1>
+      <p class="lede">A reproducible July-day simulator that shows when evaporative pad cooling stops working at a hot-arid site, and what the AC and water penalty is when it does.</p>
+
+      <dl class="hook-figures">
+        <div><dt>Peak wet-bulb</dt><dd><span data-sg="t_wb">30.1</span> °C</dd><dd class="sub" data-sg="when">28 Jul 14:00 AST</dd></div>
+        <div><dt>Pad outlet over target</dt><dd class="c-orange">+<span data-sg="excess">7.4</span> °C</dd><dd class="sub">η<sub>pad</sub> = 0.82</dd></div>
+        <div><dt>Daytime hours on AC</dt><dd class="c-red"><span data-sg="pct_ac">88.9</span>%</dd><dd class="sub"><span data-sg="n_ac">248</span> of <span data-sg="n">279</span> h, 06–14 AST</dd></div>
+        <div><dt>CSV run hash</dt><dd class="mono hash-short">a43fe361…</dd><dd class="sub">sha256, identical on every run</dd></div>
+      </dl>
+    </section>
+
+    <!-- 01 Physics -->
+    <section id="physics" class="block">
+      <div class="wrap">
+        <h2><span class="idx">01</span> The physics core</h2>
+        <p class="section-lede">One hourly balance per row. Three inputs from weather: dry-bulb, dew point, solar. Everything else follows.</p>
+
+        <div class="eq-grid">
+          <article class="eq">
+            <h3>Wet-bulb</h3>
+            <p class="formula">e<sub>s</sub>(T) = 6.112 · exp(17.67 T / (T + 243.5))</p>
+            <p class="formula">e<sub>s</sub>(T<sub>wb</sub>) − γ(T<sub>db</sub> − T<sub>wb</sub>) = e<sub>s</sub>(T<sub>dp</sub>), &nbsp;γ = 0.000662·P</p>
+            <p class="note">Magnus-Tetens saturation pressure. Psychrometric equation solved by 40-step bisection between T<sub>dp</sub> and T<sub>db</sub>.</p>
+          </article>
+          <article class="eq">
+            <h3>Pad outlet</h3>
+            <p class="formula">T<sub>pad</sub> = T<sub>db</sub> − η · (T<sub>db</sub> − T<sub>wb</sub>), &nbsp;η = 0.82</p>
+            <p class="note">The pad can only approach wet-bulb. When T<sub>wb</sub> is 30 °C, no pad gets the supply air to 25 °C.</p>
+          </article>
+        </div>
+
+        <h3 class="sub-h">Three modes, tested in order</h3>
+        <ol class="modes">
+          <li class="mode m-gray">
+            <span class="mode-tag">1 · Dry Ventilation</span>
+            <p>If outdoor air at full flow holds setpoint:<br><code>T_out + Q_sens / (ρ·c<sub>p</sub>·V<sub>max</sub> + UA) ≤ T_set</code></p>
+            <p class="cost">Fans at 0.010 m³/m²·s. No water, no AC.</p>
+          </li>
+          <li class="mode m-blue">
+            <span class="mode-tag">2 · Fan-and-Pad</span>
+            <p>If <code>T_wb ≤ 23.5 °C</code> <em>and</em> indoor at full flow <code>≤ T_set + 1.5 K</code>.</p>
+            <p class="cost">Fans at 0.050 m³/m²·s. Water = ρ·V·Δw·3600 × 1.12 bleed.</p>
+          </li>
+          <li class="mode m-red">
+            <span class="mode-tag">3 · Mechanical AC</span>
+            <p>Otherwise. House sealed, held at setpoint:<br><code>Q_AC = τ·G + UA·(T_out − T_set) + 15 W/m²</code></p>
+            <p class="cost">Electricity = Q_AC / 3.2 COP + 4 W/m².</p>
+          </li>
+        </ol>
+        <p class="threshold"><strong>Switch threshold:</strong> above <span class="mono">T_WB_CRIT = 23.5 °C</span> the pad is not allowed to run, whatever the dry-bulb. In the July profile that is crossed between 06:00 and 07:00 AST.</p>
+
+        <!-- Single-hour calculator -->
+        <div class="calc" id="calc">
+          <div class="calc-head">
+            <h3>Check one hour</h3>
+            <p>Same equations as the engine, evaluated in your browser.</p>
+            <div class="presets">
+              <button type="button" data-preset="0600">06:00 profile</button>
+              <button type="button" data-preset="1000">10:00 profile</button>
+              <button type="button" data-preset="1400">14:00 peak profile</button>
+            </div>
+          </div>
+          <div class="calc-body">
+            <form class="calc-inputs" autocomplete="off">
+              <label>Outdoor dry-bulb <span class="mono">t_out</span>
+                <span class="field"><input type="number" name="t_out" step="0.1" min="0" max="55" value="30.0"> °C</span></label>
+              <label>Dew point <span class="mono">t_dp</span>
+                <span class="field"><input type="number" name="t_dp" step="0.1" min="-10" max="40" value="20.0"> °C</span></label>
+              <label>Global solar <span class="mono">g_solar</span>
+                <span class="field"><input type="number" name="g_solar" step="1" min="0" max="1200" value="0"> W/m²</span></label>
+              <label>Pressure <span class="mono">pressure_hpa</span>
+                <span class="field"><input type="number" name="p" step="0.1" min="900" max="1100" value="1013.0"> hPa</span></label>
+              <label>Hour (AST) <span class="mono">hour</span>
+                <span class="field"><input type="number" name="hour" step="1" min="0" max="23" value="6"> h</span></label>
+            </form>
+            <div class="calc-out" aria-live="polite">
+              <div class="calc-mode" id="calc-mode">Fan-and-Pad</div>
+              <table class="kv">
+                <tr><th>Wet-bulb <span class="mono">t_wb</span></th><td id="o-twb" class="c-blue">–</td></tr>
+                <tr><th>Pad outlet</th><td id="o-tpad" class="c-orange">–</td></tr>
+                <tr><th>Setpoint</th><td id="o-tset" class="c-green">–</td></tr>
+                <tr><th>Indoor <span class="mono">t_in</span></th><td id="o-tin">–</td></tr>
+                <tr><th>Water <span class="mono">water_L_m2_hr</span></th><td id="o-water">–</td></tr>
+                <tr><th>AC load <span class="mono">q_ac_W_m2</span></th><td id="o-qac">–</td></tr>
+                <tr><th>Electricity <span class="mono">elec_W_m2</span></th><td id="o-elec">–</td></tr>
+              </table>
+              <ol class="trace" id="calc-trace"></ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 Determinism -->
+    <section id="determinism" class="block alt">
+      <div class="wrap">
+        <h2><span class="idx">02</span> No-NetCDF fallback and run hash</h2>
+        <div class="two-col">
+          <div>
+            <p>The engine looks for <span class="mono">agrico_alkhor_era5land_202507.nc</span> (ERA5-Land, nearest cell to 25.74° N, 51.47° E). If the file is absent, it builds a synthetic July: 31 days × 9 hours, sinusoidal dry-bulb 30→42 °C and dew point 20→26 °C, solar to 950 W/m², with Gaussian noise from <span class="mono">numpy.random.default_rng(42)</span>.</p>
+            <p>Same seed, same arithmetic, same CSV bytes. The SHA-256 of <span class="mono">agrico_hourly_results.csv</span> is the run hash. A calibration self-test checks the synthetic month against the reference case: mean daily peak 42.07 °C dry-bulb, 29.80 °C wet-bulb → PASS (±0.5 °C).</p>
+          </div>
+          <div class="golden">
+            <span class="label">Reference run hash (sha256)</span>
+            <code class="hash" id="golden-hash">a43fe36177a67c9fd34b1f2d3addea9ef2eb12d750da68718be6cf0b58f16839</code>
+            <span class="label">Locally</span>
+            <pre class="cmd"><code>pip install numpy pandas matplotlib
+python agrico_physics_engine.py
+python agrico_physics_engine.py</code></pre>
+            <p class="dl"><a href="/engine/agrico_physics_engine.py" download>agrico_physics_engine.py</a> · <a href="/engine/requirements.txt" download>requirements.txt</a></p>
+          </div>
+        </div>
+
+        <div class="runs">
+          <div class="runs-head">
+            <h3>Run it twice, here</h3>
+            <p>Starts two separate Python interpreters (Pyodide, WebAssembly) in two web workers. Each one runs the unmodified engine file and hashes its own CSV. The browser then hashes both CSVs again with Web Crypto. The first run downloads about 40 MB of Python packages from the jsDelivr CDN. The engine itself makes no network calls.</p>
+            <button type="button" id="run-btn" class="primary">Run engine twice</button>
+          </div>
+          <div class="run-panels">
+            <div class="run-panel" id="run-a">
+              <div class="run-title"><span>Run A</span><span class="run-state" data-state>idle</span></div>
+              <pre class="stdout" data-stdout>$ python agrico_physics_engine.py</pre>
+              <div class="run-hash"><span class="label">CSV sha256</span><code class="hash" data-hash>–</code></div>
+              <div class="run-dl" data-dl></div>
+            </div>
+            <div class="run-panel" id="run-b">
+              <div class="run-title"><span>Run B</span><span class="run-state" data-state>idle</span></div>
+              <pre class="stdout" data-stdout>$ python agrico_physics_engine.py</pre>
+              <div class="run-hash"><span class="label">CSV sha256</span><code class="hash" data-hash>–</code></div>
+              <div class="run-dl" data-dl></div>
+            </div>
+          </div>
+          <div class="verdict" id="verdict" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 CSV -->
+    <section id="csv" class="block">
+      <div class="wrap">
+        <h2><span class="idx">03</span> The hourly CSV</h2>
+        <p class="section-lede">279 rows (31 days × 06–14 AST), 10 columns. This is the reference output from the hash above. <a href="/artifacts/agrico_hourly_results.csv" download>Download CSV</a></p>
+        <ul class="cols mono" aria-label="CSV columns">
+          <li>timestamp_ast</li><li>t_out</li><li>t_wb</li><li>g_solar</li><li>mode</li><li>t_in</li><li>v_spec</li><li>water_L_m2_hr</li><li>q_ac_W_m2</li><li>elec_W_m2</li>
+        </ul>
+        <div class="csv-ctrl">
+          <label for="day-select">Day</label>
+          <button type="button" id="day-prev" aria-label="Previous day">‹</button>
+          <select id="day-select"></select>
+          <button type="button" id="day-next" aria-label="Next day">›</button>
+          <span class="csv-note" id="day-note"></span>
+        </div>
+        <div class="table-scroll">
+          <table class="csv-table" id="csv-table">
+            <thead><tr>
+              <th class="mono">timestamp_ast</th><th class="mono">t_out</th><th class="mono">t_wb</th><th class="mono">g_solar</th><th class="mono">mode</th><th class="mono">t_in</th><th class="mono">v_spec</th><th class="mono">water_L_m2_hr</th><th class="mono">q_ac_W_m2</th><th class="mono">elec_W_m2</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="note">Values rounded for display. The file holds full float64 precision; that is what gets hashed.</p>
+      </div>
+    </section>
+
+    <!-- 04 Figure -->
+    <section id="figure" class="block alt">
+      <div class="wrap">
+        <h2><span class="idx">04</span> The proof figure</h2>
+        <p class="section-lede">Hourly means across July. Background shading shows the majority mode in each hour. Before 07:00 the orange pad-outlet line is below the green target. After that it stays above, and the shading turns red where AC takes over. The marker is the single highest wet-bulb hour of the month.</p>
+        <figure class="proof">
+          <img src="/artifacts/agrico_july_proof.png" width="2000" height="1240" alt="Line chart, hours 06 to 14 AST. Outdoor dry-bulb (red) rises from 30 to 42 °C, outdoor wet-bulb (blue) from 23 to 30 °C, pad outlet (orange dashed) from 24.3 to 32 °C, crossing the green dotted 25 °C target just after 06:00. Hour 06 is shaded blue (Fan-and-Pad), hours 07 to 14 are shaded red (Mechanical AC). Annotation: peak wet-bulb 30.1 °C on 28 Jul 14:00 AST, pad outlet 32.4 °C, 7.4 °C above target." id="proof-img">
+          <figcaption>
+            <ul class="legend">
+              <li><i class="ln red"></i>Outdoor dry-bulb</li>
+              <li><i class="ln blue"></i>Outdoor wet-bulb</li>
+              <li><i class="ln orange dashed"></i>Pad outlet</li>
+              <li><i class="ln green dotted"></i>Target 25 °C</li>
+              <li><i class="sw red"></i>Mechanical AC</li>
+              <li><i class="sw blue"></i>Fan-and-Pad</li>
+              <li><i class="sw gray"></i>Dry Ventilation</li>
+            </ul>
+            <a href="/artifacts/agrico_july_proof.png" download>Download PNG (200 dpi)</a>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- 05 Summary -->
+    <section id="summary" class="block">
+      <div class="wrap">
+        <h2><span class="idx">05</span> Summary</h2>
+        <p class="section-lede">Computed in the browser from the CSV above. Per-hectare figures for the 06–14 AST window. Matches the engine's stdout.</p>
+
+        <div class="summary-grid">
+          <table class="data" id="climate-table">
+            <caption>Climate and indoor, July 06–14 AST</caption>
+            <thead><tr><th></th><th>Mean</th><th>Max</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <table class="data" id="mode-table">
+            <caption>By mode, July totals</caption>
+            <thead><tr><th>Mode</th><th>Hours</th><th>Share</th><th>Water m³/ha</th><th>Elec MWh/ha</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <table class="data" id="rate-table">
+            <caption>Daily rates per hectare</caption>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="gun">
+          <span class="label">Smoking gun</span>
+          <p id="gun-text">At peak wet-bulb (30.1&nbsp;°C on 2025-07-28 14:00 AST), pad outlet reaches 32.4&nbsp;°C, 7.4&nbsp;°C above the 25&nbsp;°C target. Mechanical AC is mandatory for 88.9% of July daytime hours (248 of 279).</p>
+        </div>
+
+        <details class="raw">
+          <summary>Reference stdout</summary>
+          <pre class="stdout" id="ref-stdout">Loading…</pre>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p class="close">Deterministic, no GPU, no network, runs in under two minutes on a laptop. Natively, about one second.</p>
+      <p class="prov">Reference case: Al Khor CFD study; pad effectiveness: IFAS extension guidance.</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js" type="module"></script>
+</body>
+</html>

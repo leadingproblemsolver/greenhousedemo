@@ -1,0 +1,6 @@
+numpy
+pandas
+matplotlib
+# optional, for ERA5-Land NetCDF input:
+# xarray
+# netCDF4

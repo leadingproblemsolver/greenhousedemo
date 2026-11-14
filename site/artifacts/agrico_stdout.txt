@@ -1,0 +1,35 @@
+[agrico] engine v1.1.0 · python 3.14.3 · numpy 2.5.4
+[agrico] Loading input...
+[agrico] NetCDF not found: agrico_alkhor_era5land_202507.nc — using synthetic fallback (seed 42).
+[agrico] Generated 279 synthetic rows (06–14h AST).
+[agrico] Running thermodynamic model...
+[agrico] Writing outputs...
+[agrico]   ./agrico_hourly_results.csv
+[agrico]   ./agrico_july_proof.png
+
+[agrico] Calibration: mean daily peak DB 42.07 °C, WB 29.80 °C -> PASS
+[agrico] CSV sha256: a43fe36177a67c9fd34b1f2d3addea9ef2eb12d750da68718be6cf0b58f16839
+
+==================================================================
+AL KHOR — JULY 2025 SUMMARY (06:00–14:00 AST)
+==================================================================
+Mean dry-bulb:   37.43 °C   Max:  42.58 °C
+Mean wet-bulb:   27.20 °C   Max:  30.14 °C
+Mean indoor:     24.97 °C
+
+Mode                hours   share  water m³/ha  elec MWh/ha
+------------------------------------------------------------------
+Dry Ventilation         0    0.0%          0.0          0.0
+Fan and Pad            31   11.1%        171.3          5.6
+Mechanical AC         248   88.9%          0.0        414.6
+  (July totals, 06–14h; water L/m² ×10 = m³/ha; elec Wh/m² ×10 /1000 = MWh/ha)
+
+Mean daily cooling water:          5.53 m³/ha/day  (06–14h)
+Mean daily cooling electricity: 13555.51 kWh/ha/day (06–14h)
+Peak AC cooling load:              7.31 MW/ha
+
+SMOKING GUN
+------------------------------------------------------------------
+At peak wet-bulb (30.1 °C on 2025-07-28 14:00 AST), pad outlet reaches 32.4 °C — exceeding the 25 °C target by 7.4 °C. Mechanical AC is mandatory for 88.9% of July daytime hours (248 of 279).
+
+Reference case: Al Khor CFD study; pad effectiveness: IFAS extension guidance.
